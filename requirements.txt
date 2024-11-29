@@ -1,0 +1,4 @@
+flask-oidc
+flask-openid
+pyarrow<10.1.0,>=10.0.1
+azure-storage-common==1.4.2

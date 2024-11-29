@@ -1,0 +1,77 @@
+version: '3.9'
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: keycloak
+    command: start-dev
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8080:8080"
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+    restart: unless-stopped
+
+  airflow-db:
+    image: postgres:13
+    container_name: airflow-db
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - airflow_db:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:6.2
+    container_name: airflow-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  airflow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: airflow
+    depends_on:
+      - airflow-db
+      - redis
+      - keycloak
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow"
+      AIRFLOW__CORE__FERNET_KEY: "aVLgPXqfQhm1xuW19nYYjhgMx1Uel4Nx6-VNfS-u0WY="
+      AIRFLOW__WEBSERVER__AUTH_BACKEND: "airflow_oidc"
+      AIRFLOW__WEBSERVER__RATE_LIMITER: "redis"
+      AIRFLOW__WEBSERVER__REDIS_HOST: "airflow-redis"
+      AIRFLOW__WEBSERVER__REDIS_PORT: "6379"
+      AIRFLOW__WEBSERVER__APP_CONFIG_FILE: "/opt/airflow/webserver_config.py"
+      OIDC_CLIENT_SECRETS: "/opt/airflow/oidc_client_secrets.json"
+      OIDC_SCOPES: "openid email profile"
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./webserver_config.py:/opt/airflow/webserver_config.py
+      - ./oidc_client_secrets.json:/opt/airflow/oidc_client_secrets.json
+    command: >
+      bash -c "airflow db migrate &&
+               airflow connections create-default-connections &&
+               airflow users create --username admin --password admin --firstname Airflow --lastname Admin --role Admin --email admin@example.com &&
+               airflow webserver"
+    restart: unless-stopped
+
+volumes:
+  keycloak_data:
+  airflow_db:
+  redis_data:
